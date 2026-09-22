@@ -272,6 +272,24 @@
  * (cariIndexKolomCV_, cariSheetDenganKolomCV_), jadi tetap ketemu berapa
  * pun variasi spasi/kapitalnya. Tidak perlu langkah tambahan, sudah ikut
  * kepakai begitu setupRekapPelamarSemuaUnitRS() dijalankan lagi.
+ *
+ * ------------------------------------------------------------------
+ * FITUR BARU (22 Sep 2026): bagikanEditorFormKeRS(). Sesuai prinsip
+ * desain awal proyek ini (CEDC penyedia infrastruktur, bukan pemilik
+ * proses rekrutmen RS), RS seharusnya punya akses edit SUNGGUHAN ke Form
+ * Pendaftaran Pelamar milik Unit RS mereka sendiri (supaya bisa menambah
+ * pertanyaan khusus di section "Pertanyaan Tambahan dari RS"), bukan cuma
+ * akses lihat lewat CEDC. Fungsi ini membagikan Form itu (lewat
+ * DriveApp.addEditor, karena Form juga file Drive) ke emailPicRS di
+ * KONFIGURASI_UNIT_RS. Beda dengan folder CV, ini TIDAK perlu menunggu
+ * ada pelamar, formId sudah pasti ada sejak awal, jadi cukup dijalankan
+ * SEKALI SAJA lewat dropdown Run, kapan pun. Field inti (Nama Lengkap,
+ * Posisi yang Dilamar, dst) tetap aman dari perubahan RS karena semua
+ * pembacaan jawaban Form di file ini pakai Item ID/nama header, bukan
+ * posisi tetap.
+ *
+ * LANGKAH: setelah menimpa file ini, jalankan bagikanEditorFormKeRS()
+ * SEKALI lewat dropdown Run.
  */
 
 var NAMA_SHEET_MASTER_PERMINTAAN = 'Master Permintaan';
@@ -664,6 +682,45 @@ function ekstrakFileIdDrive_(teks) {
   var s = String(teks || '');
   var cocok = s.match(/[?&]id=([a-zA-Z0-9_-]+)/) || s.match(/\/d\/([a-zA-Z0-9_-]+)/);
   return cocok ? cocok[1] : null;
+}
+
+/**
+ * Bagikan akses co-editor RS ke Form Pendaftaran Pelamar mereka sendiri.
+ *
+ * PRINSIP DESAIN (sudah disepakati sejak awal proyek ini): CEDC berperan
+ * sebagai penyedia infrastruktur, bukan pemilik proses rekrutmen RS. RS
+ * yang benar-benar membutuhkan lowongan diedarkan dan melakukan seleksi
+ * harus diberi akses edit SUNGGUHAN atas Form mereka sendiri (misalnya
+ * menambah pertanyaan khusus di section "Pertanyaan Tambahan dari RS"),
+ * bukan cuma jadi kanal usul lewat CEDC. Field inti (Nama Lengkap, Posisi
+ * yang Dilamar, dst) tetap aman dari perubahan RS karena semua pembacaan
+ * jawaban Form di file ini pakai Item ID / nama header, bukan posisi
+ * tetap, jadi RS boleh menambah/menyusun ulang pertanyaan tambahan mereka
+ * tanpa merusak sistem.
+ *
+ * Beda dengan bagikanFolderCVKeRS() di atas, fungsi ini TIDAK perlu
+ * menunggu ada pelamar dulu, formId sudah pasti ada sejak Form dibuat
+ * (lihat KONFIGURASI_UNIT_RS), jadi cukup dijalankan SEKALI kapan saja,
+ * tidak perlu ditempel ke trigger submit seperti folder CV.
+ * DriveApp.addEditor(...) idempotent, aman dijalankan ulang kapan saja
+ * kalau suatu saat emailPicRS berubah.
+ */
+function bagikanEditorFormKeRS() {
+  bagikanEditorFormSatuUnit_(KONFIGURASI_UNIT_RS.royalPrima, 'Royal Prima');
+  bagikanEditorFormSatuUnit_(KONFIGURASI_UNIT_RS.royalPrimaMarelan, 'Royal Prima Marelan');
+}
+
+function bagikanEditorFormSatuUnit_(konfig, namaUnitRS) {
+  if (!konfig.emailPicRS) {
+    Logger.log(namaUnitRS + ': emailPicRS belum diisi di KONFIGURASI_UNIT_RS, dilewati.');
+    return;
+  }
+  if (!konfig.formId) {
+    Logger.log(namaUnitRS + ': formId belum diisi di KONFIGURASI_UNIT_RS, dilewati.');
+    return;
+  }
+  DriveApp.getFileById(konfig.formId).addEditor(konfig.emailPicRS);
+  Logger.log(namaUnitRS + ': Form Pendaftaran Pelamar berhasil dibagikan sebagai Editor ke ' + konfig.emailPicRS + '.');
 }
 
 // ===== Bagian A: Trigger On Edit, sinkronkan Link + Dropdown Posisi =====

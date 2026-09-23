@@ -68,6 +68,64 @@
  * (sama seperti yang sudah dipakai ambilLinkDokumen), cocok dengan
  * jenis trigger yang terpasang.
  * ------------------------------------------------------------------
+ * PERBAIKAN (22 Sep 2026): bug ditemukan langsung lewat uji coba nyata
+ * (bukan cuma dibaca kodenya) oleh Ilman. Sebelumnya, daftar posisi dari
+ * Web App dikirim sebagai SATU string, tiap posisi dipisah ENTER ('\n'),
+ * dan tiap kolom dalam satu posisi dipisah TITIK-KOMA (';') lewat
+ * buatLinkFormLanjutan, lalu dibelah balik dengan cara yang sama di
+ * isiMasterPermintaan.
+ *
+ * MASALAHNYA: pemisah itu (enter dan titik-koma) bisa juga muncul secara
+ * SAH di dalam isi field bebas seperti Kualifikasi (contoh nyata: RS
+ * mengetik kualifikasi sebagai daftar bernomor dengan Enter di antara
+ * tiap poin, bukan koma). Karena parser tidak bisa membedakan "enter di
+ * dalam Kualifikasi" dari "enter yang memisahkan posisi", SATU posisi
+ * dengan Kualifikasi multi-baris pecah jadi BEBERAPA baris salah di
+ * Master Permintaan, dan kolom-kolom di baris terakhir ikut bergeser
+ * (Program Studi Relevan nyasar ke kolom Kualifikasi, dst).
+ *
+ * PERBAIKAN: daftar posisi sekarang dikodekan sebagai JSON
+ * (JSON.stringify di buatLinkFormLanjutan, JSON.parse di
+ * isiMasterPermintaan lewat helper parseDaftarPosisiMentah_). JSON
+ * otomatis meng-escape ENTER, TITIK-KOMA, KOMA, dan karakter apa pun
+ * lain di dalam teks bebas, sehingga tidak mungkin lagi ketuker dengan
+ * pemisah antar-posisi, seberapa pun kompleks isi Kualifikasi yang
+ * diketik RS. parseDaftarPosisiMentah_ tetap bisa membaca format LAMA
+ * (pemisah ';'/enter) sebagai fallback, cuma untuk jaga-jaga kalau ada
+ * baris Staging Web lama yang masih berstatus "Menunggu Form" saat
+ * perbaikan ini di-deploy (staging baru selalu memakai format JSON).
+ *
+ * TIDAK ADA langkah setup tambahan untuk mengaktifkan perbaikan ini,
+ * cukup timpa Code.gs dengan isi file ini. Deploy ulang Web App (Deploy >
+ * Manage deployments > edit deployment yang aktif > Version: New,
+ * Deploy) supaya Web App yang dipakai RS memakai kode buatLinkFormLanjutan
+ * yang baru.
+ * ------------------------------------------------------------------
+ * FITUR BARU (23 Sep 2026): "Master Gate" — Fase 1 dari rencana Web App
+ * jadi satu pintu akses untuk RS (lihat Bagian 12 dokumen referensi
+ * project). Begitu RS memilih Unit RS di Web App (dropdown yang sudah
+ * ada), sekarang muncul tombol "Buka Rekap Pelamar" yang langsung
+ * mengarah ke Spreadsheet Pelamar milik Unit RS itu, supaya RS tidak
+ * perlu lagi mencari sendiri, dan CEDC tidak perlu manual bagikan
+ * linknya satu-satu.
+ *
+ * Fungsi baru ambilLinkRekapPelamar(unitRS) di bawah ini memanggil
+ * getKonfigurasiUnitRS() dan linkSpreadsheetPelamar_() yang SUDAH ADA
+ * di Fase2_Bagian3_LinkOtomatis.gs (dipakai juga oleh alur Master
+ * Permintaan -> kolom "Link Rekap Pelamar"). Ini AMAN dipanggil dari
+ * file Code.gs meski definisinya ada di file lain, karena semua file
+ * .gs dalam satu project Apps Script berbagi scope global yang sama
+ * (bukan modul terpisah seperti Node.js). Konsekuensinya: fungsi ini
+ * BARU BISA JALAN kalau Fase2_Bagian3_LinkOtomatis.gs versi yang sudah
+ * berisi getKonfigurasiUnitRS/linkSpreadsheetPelamar_ juga sudah
+ * ter-paste di project yang sama (sudah terpenuhi per 23 Sep 2026,
+ * kedua fungsi itu sudah dipakai fitur lain yang sudah live).
+ *
+ * RS sudah otomatis Viewer di Spreadsheet Pelamar ini (lihat
+ * bagikanFolderCVKeRS() di Fase2_Bagian3_LinkOtomatis.gs), jadi link ini
+ * akan langsung bisa dibuka begitu RS login dengan akun Google yang
+ * sudah di-share, tidak perlu langkah share tambahan.
+ * ------------------------------------------------------------------
  */
 
 var JUDUL_UNIT_RS = 'Unit RS';
@@ -302,21 +360,28 @@ function doGet() {
  * }
  * Menyimpan Deadline/Tag/daftar posisi ke sheet Staging Web, lalu
  * mengembalikan URL Form yang Unit RS-nya sudah otomatis terisi.
+ *
+ * PERBAIKAN (22 Sep 2026): daftar posisi sekarang disimpan sebagai JSON
+ * (bukan lagi teks dipisah ';' dan enter), lihat blok komentar PERBAIKAN
+ * 22 Sep 2026 di awal file ini untuk alasan lengkapnya. JSON.stringify
+ * otomatis meng-escape Enter/titik-koma/koma apa pun yang diketik RS di
+ * field bebas seperti Kualifikasi, jadi field itu sekarang aman dipakai
+ * multi-baris atau mengandung titik-koma tanpa merusak parsing di
+ * isiMasterPermintaan.
  */
 function buatLinkFormLanjutan(data) {
-  var daftarPosisiTeks = data.posisiList
-      .filter(function (p) { return p.nama; })
-      .map(function (p) {
-        return [
-          p.nama,
-          p.jumlah,
-          p.kualifikasi,
-          p.ipkMinimal || '',
-          (p.programStudiRelevan || []).join(','),
-          (p.fakultasRelevan || []).join(',')
-        ].join(' ; ');
-      })
-      .join('\n');
+  var daftarPosisiValid = data.posisiList.filter(function (p) { return p.nama; });
+
+  var daftarPosisiTeks = JSON.stringify(daftarPosisiValid.map(function (p) {
+    return {
+      nama: p.nama,
+      jumlah: p.jumlah,
+      kualifikasi: p.kualifikasi,
+      ipkMinimal: p.ipkMinimal || '',
+      programStudiRelevan: (p.programStudiRelevan || []).join(','),
+      fakultasRelevan: (p.fakultasRelevan || []).join(',')
+    };
+  }));
 
   var ssId = PropertiesService.getScriptProperties().getProperty('MASTER_SS_ID');
   var ss = SpreadsheetApp.openById(ssId);
@@ -346,6 +411,25 @@ function cariItem(form, judul) {
     if (items[i].getTitle() === judul) return items[i];
   }
   throw new Error('Item Form dengan judul "' + judul + '" tidak ditemukan.');
+}
+
+/**
+ * MASTER GATE, Fase 1 (23 Sep 2026). Dipanggil dari Index.html lewat
+ * google.script.run begitu RS memilih Unit RS, untuk menampilkan tombol
+ * "Buka Rekap Pelamar" yang langsung mengarah ke Spreadsheet Pelamar
+ * milik Unit RS itu (kalau tab "Rekap per Lowongan" sudah ada, link
+ * langsung menjorok ke tab itu, lewat linkSpreadsheetPelamar_).
+ *
+ * Sengaja TIDAK menyalin ulang KONFIGURASI_UNIT_RS/spreadsheetPelamarId
+ * ke file ini, supaya nilainya tetap satu sumber kebenaran di
+ * Fase2_Bagian3_LinkOtomatis.gs (sama prinsipnya dengan KATALOG_PRODI di
+ * Index.html yang juga tidak boleh diduplikasi, lihat Bagian 3 dokumen
+ * referensi project). getKonfigurasiUnitRS dan linkSpreadsheetPelamar_
+ * didefinisikan di Fase2_Bagian3_LinkOtomatis.gs, bukan di file ini.
+ */
+function ambilLinkRekapPelamar(unitRS) {
+  var konfig = getKonfigurasiUnitRS(unitRS);
+  return linkSpreadsheetPelamar_(konfig);
 }
 
 
@@ -407,6 +491,61 @@ function ambilResponseDenganRetry(e) {
 }
 
 /**
+ * Mem-parse teks "Daftar Posisi (mentah)" dari sheet Staging Web menjadi
+ * array of object { nama, jumlah, kualifikasi, ipkMinimal,
+ * programStudiRelevan, fakultasRelevan }.
+ *
+ * FORMAT BARU (sejak perbaikan 22 Sep 2026): JSON array of object, dibuat
+ * lewat JSON.stringify di buatLinkFormLanjutan. Ini format yang dipakai
+ * untuk SEMUA staging baru sejak perbaikan ini, aman untuk field bebas
+ * (terutama Kualifikasi) yang mengandung Enter/titik-koma/koma, karena
+ * JSON meng-escape semuanya jadi satu baris teks yang tidak ambigu.
+ *
+ * FORMAT LAMA (fallback saja, TIDAK dipakai lagi untuk staging baru):
+ * teks dipisah ';' antar kolom dan enter ('\n') antar posisi. Ini format
+ * yang menyebabkan bug 22 Sep 2026 (Kualifikasi multi-baris pakai Enter
+ * pecah jadi beberapa "posisi" palsu, kolom-kolom di baris terakhir ikut
+ * bergeser). Cuma dipertahankan di sini sebagai fallback, kalau-kalau ada
+ * baris Staging Web berstatus "Menunggu Form" yang dibuat SEBELUM
+ * perbaikan ini di-deploy dan belum sempat diproses triggernya.
+ */
+function parseDaftarPosisiMentah_(teks) {
+  try {
+    var hasilJSON = JSON.parse(teks);
+    if (Array.isArray(hasilJSON)) {
+      return hasilJSON.map(function (p) {
+        return {
+          nama: p.nama || '',
+          jumlah: p.jumlah || '',
+          kualifikasi: p.kualifikasi || '',
+          ipkMinimal: p.ipkMinimal || '',
+          programStudiRelevan: p.programStudiRelevan || '',
+          fakultasRelevan: p.fakultasRelevan || ''
+        };
+      });
+    }
+  } catch (err) {
+    // Bukan JSON valid, kemungkinan staging FORMAT LAMA dari sebelum
+    // perbaikan 22 Sep 2026. Lanjut ke pembacaan format lama di bawah.
+  }
+
+  Logger.log('parseDaftarPosisiMentah_: teks bukan JSON valid, dibaca pakai FORMAT LAMA (pemisah ";" dan enter). Ini cuma seharusnya kejadian untuk baris Staging Web yang dibuat SEBELUM perbaikan 22 Sep 2026, cek manual kalau muncul terus setelah itu.');
+  return String(teks).split('\n').map(function (satuBaris) {
+    satuBaris = satuBaris.trim();
+    if (!satuBaris) return null;
+    var kolom = satuBaris.split(';').map(function (s) { return s.trim(); });
+    return {
+      nama: kolom[0] || '',
+      jumlah: kolom[1] || '',
+      kualifikasi: kolom[2] || '',
+      ipkMinimal: kolom[3] || '',
+      programStudiRelevan: kolom[4] || '',
+      fakultasRelevan: kolom[5] || ''
+    };
+  }).filter(function (p) { return p; });
+}
+
+/**
  * PENTING: trigger fungsi ini dipasang lewat
  * ScriptApp.newTrigger('isiMasterPermintaan').forForm(form).onFormSubmit(),
  * yaitu trigger yang ditempel ke FORM, bukan ke Spreadsheet. Untuk
@@ -424,6 +563,12 @@ function ambilResponseDenganRetry(e) {
  * with ID ... exists for this form". ambilResponseDenganRetry di
  * bawah menangani ini dengan mencoba ulang beberapa kali dengan jeda,
  * sebelum benar benar menyerah.
+ *
+ * PERBAIKAN (22 Sep 2026): pembacaan daftar posisi dari staging.daftarPosisiMentah
+ * sekarang lewat parseDaftarPosisiMentah_ (JSON, dengan fallback format
+ * lama), menggantikan split manual ';'/enter yang sebelumnya ada di sini
+ * langsung. Lihat blok komentar PERBAIKAN 22 Sep 2026 di awal file ini
+ * untuk detail bug yang diperbaiki.
  */
 function isiMasterPermintaan(e) {
   var response = ambilResponseDenganRetry(e);
@@ -484,24 +629,15 @@ function isiMasterPermintaan(e) {
     return;
   }
 
-  var baris = staging.daftarPosisiMentah.split('\n');
-  baris.forEach(function (satuBaris) {
-    satuBaris = satuBaris.trim();
-    if (!satuBaris) return;
-
-    var kolom = satuBaris.split(';').map(function (s) { return s.trim(); });
-    var posisi = kolom[0] || '';
-    var jumlah = kolom[1] || '';
-    var kualifikasi = kolom[2] || '';
-    var ipkMinimal = kolom[3] || '';
-    var programStudiRelevan = kolom[4] || '';
-    var fakultasRelevan = kolom[5] || '';
+  var daftarPosisi = parseDaftarPosisiMentah_(staging.daftarPosisiMentah);
+  daftarPosisi.forEach(function (p) {
+    var posisi = p.nama || '';
     if (!posisi) return;
 
     var kode = buatKodeLowongan(sheetMaster, prefixUnit);
     sheetMaster.appendRow([
-      kode, new Date(), unitRS, posisi, jumlah, kualifikasi, ipkMinimal,
-      programStudiRelevan, fakultasRelevan, staging.deadline,
+      kode, new Date(), unitRS, posisi, p.jumlah || '', p.kualifikasi || '', p.ipkMinimal || '',
+      p.programStudiRelevan || '', p.fakultasRelevan || '', staging.deadline,
       staging.tagCampus, linkDokumen, picNama, emailVerifikasi, 'Diterima', '', ''
     ]);
   });

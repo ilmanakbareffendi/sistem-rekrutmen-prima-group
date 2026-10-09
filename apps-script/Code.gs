@@ -43,7 +43,8 @@ function buatLinkFormLanjutan(data) {
       kualifikasi: p.kualifikasi,
       ipkMinimal: p.ipkMinimal || '',
       programStudiRelevan: (p.programStudiRelevan || []).join(','),
-      fakultasRelevan: (p.fakultasRelevan || []).join(',')
+      fakultasRelevan: (p.fakultasRelevan || []).join(','),
+      direopenDariKode: p.direopenDariKode || ''
     };
   });
 
@@ -65,6 +66,45 @@ function buatLinkFormLanjutan(data) {
 /** Master Gate: tombol "Buka Rekap Pelamar" di Web App. */
 function ambilLinkRekapPelamar(unitRS) {
   return linkRekapPelamar_(unitRS_(unitRS));
+}
+
+/**
+ * Fase 5 (reopen dari sisi RS). Daftar posisi Unit RS ini yang berstatus
+ * "Perlu Dicek" (deadline lewat, belum terisi penuh), untuk ditampilkan di
+ * Web App. sisa = Jumlah Kebutuhan - Jumlah Diterima (null kalau tidak bisa
+ * dihitung); RS tetap boleh mengubah angkanya. Nilai dikirim sebagai teks dan
+ * angka saja, karena google.script.run tidak bisa mengirim objek Date.
+ */
+function ambilPosisiBelumTerisi(unitRS) {
+  var unit = unitRS_(unitRS);
+  var tabel = bacaTabel_(bukaSheetMaster_());
+  var k = {};
+  ['KODE', 'UNIT', 'POSISI', 'STATUS', 'KEBUTUHAN', 'DITERIMA', 'KUALIFIKASI', 'IPK_MIN', 'PRODI_REL', 'FAKULTAS_REL', 'DEADLINE']
+      .forEach(function (n) { k[n] = tabel.idx(KOLOM[n]); });
+  var zona = Session.getScriptTimeZone();
+
+  var hasil = [];
+  tabel.data.forEach(function (b) {
+    if (!b[k.KODE] || !b[k.UNIT] || unitRS_(b[k.UNIT]) !== unit || b[k.STATUS] !== STATUS.PERLU_DICEK) return;
+    if (b[k.POSISI] === POSISI_TANPA_DATA) return;
+    var kebutuhan = bacaBilanganBulat_(b[k.KEBUTUHAN]);
+    var diterima = k.DITERIMA !== -1 ? (Number(b[k.DITERIMA]) || 0) : 0;
+    var sisa = kebutuhan ? kebutuhan - diterima : null;
+    var deadline = bacaTanggal_(b[k.DEADLINE]);
+    hasil.push({
+      kode: String(b[k.KODE]),
+      posisi: String(b[k.POSISI] || ''),
+      kebutuhan: kebutuhan,
+      diterima: diterima,
+      sisa: sisa && sisa > 0 ? sisa : null,
+      kualifikasi: String(b[k.KUALIFIKASI] || ''),
+      ipkMinimal: b[k.IPK_MIN] === '' || b[k.IPK_MIN] === null ? '' : String(b[k.IPK_MIN]),
+      programStudiRelevan: pecahDaftarKoma_(b[k.PRODI_REL]),
+      fakultasRelevan: pecahDaftarKoma_(b[k.FAKULTAS_REL]),
+      deadline: deadline ? Utilities.formatDate(deadline, zona, 'd MMM yyyy') : ''
+    });
+  });
+  return hasil;
 }
 
 // ============================================================
@@ -102,8 +142,9 @@ function isiMasterPermintaan(e) {
   var linkRekap = linkRekapPelamar_(unitRS_(unitRS));
 
   var barisBaru = [];
+  var reopen = []; // [{kodeLama, kodeBaru}] untuk posisi yang dibuka ulang (Fase 5)
   if (!staging) {
-    barisBaru.push(barisMaster_(tabel, penomor(), identitas, { nama: '(tidak ditemukan data dari Web App)' }, null, {
+    barisBaru.push(barisMaster_(tabel, penomor(), identitas, { nama: POSISI_TANPA_DATA }, null, {
       status: STATUS.PERLU_DICEK,
       catatan: 'Form disubmit tanpa data Web App yang cocok (atau datanya sudah lebih dari ' + STAGING_BATAS_JAM + ' jam). Cek manual ke PIC.',
       linkRekap: linkRekap
@@ -111,14 +152,50 @@ function isiMasterPermintaan(e) {
   } else {
     parseDaftarPosisi_(staging.daftarPosisi).forEach(function (p) {
       if (!p.nama) return;
-      barisBaru.push(barisMaster_(tabel, penomor(), identitas, p, staging, { status: STATUS.DITERIMA, linkRekap: linkRekap }));
+      var kode = penomor();
+      var kodeLama = String(p.direopenDariKode || '').trim();
+      if (kodeLama) reopen.push({ kodeLama: kodeLama, kodeBaru: kode });
+      barisBaru.push(barisMaster_(tabel, kode, identitas, p, staging, {
+        status: STATUS.DITERIMA,
+        catatan: kodeLama ? 'Dibuka ulang dari ' + kodeLama + ' (posisi yang belum terisi).' : '',
+        linkRekap: linkRekap
+      }));
     });
   }
 
   if (barisBaru.length) {
     tabel.sheet.getRange(tabel.sheet.getLastRow() + 1, 1, barisBaru.length, tabel.header.length).setValues(barisBaru);
   }
-  Logger.log('Form Permintaan ' + unitRS + ': ' + barisBaru.length + ' baris ditambahkan ke Master Permintaan.');
+  tutupBarisYangDibukaUlang_(tabel, unitRS, reopen);
+  Logger.log('Form Permintaan ' + unitRS + ': ' + barisBaru.length + ' baris ditambahkan ke Master Permintaan' +
+      (reopen.length ? ', ' + reopen.length + ' di antaranya dibuka ulang.' : '.'));
+}
+
+/**
+ * Fase 5: baris lama yang dibuka ulang ditandai "Ditutup" + catatan kode
+ * penggantinya, supaya tidak muncul lagi di daftar "belum terisi". Hanya
+ * baris Unit RS yang sama dan yang MASIH "Perlu Dicek" yang diubah.
+ */
+function tutupBarisYangDibukaUlang_(tabel, unitRS, reopen) {
+  if (!reopen.length) return;
+  var iKode = kolomWajib_(tabel, KOLOM.KODE), iUnit = kolomWajib_(tabel, KOLOM.UNIT);
+  var iStatus = kolomWajib_(tabel, KOLOM.STATUS), iCatatan = kolomWajib_(tabel, KOLOM.CATATAN);
+  reopen.forEach(function (r) {
+    for (var i = 0; i < tabel.data.length; i++) {
+      var b = tabel.data[i];
+      if (b[iKode] !== r.kodeLama) continue;
+      if (unitRS_(b[iUnit]) !== unitRS_(unitRS) || b[iStatus] !== STATUS.PERLU_DICEK) {
+        Logger.log('Baris ' + r.kodeLama + ' tidak ditutup otomatis (beda Unit RS atau status bukan Perlu Dicek).');
+        return;
+      }
+      var catatanLama = String(b[iCatatan] || '').trim();
+      var catatanBaru = 'Digantikan Kode Lowongan baru: ' + r.kodeBaru;
+      tabel.sheet.getRange(i + 2, iStatus + 1).setValue(STATUS.DITUTUP);
+      tabel.sheet.getRange(i + 2, iCatatan + 1).setValue(catatanLama ? catatanLama + '\n' + catatanBaru : catatanBaru);
+      return;
+    }
+    Logger.log('Baris ' + r.kodeLama + ' yang dibuka ulang tidak ditemukan di Master Permintaan.');
+  });
 }
 
 // Satu baris Master Permintaan, disusun mengikuti urutan header yang ADA di sheet.

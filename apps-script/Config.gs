@@ -67,6 +67,9 @@ var DAFTAR_STATUS = [STATUS.DITERIMA, STATUS.DIPROSES, STATUS.DIPUBLIKASIKAN, ST
 // ===== Staging Web (penampung data Web App sebelum Form Permintaan disubmit) =====
 var STAGING_MENUNGGU = 'Menunggu Form';
 var STAGING_BATAS_JAM = 48; // staging lebih tua dari ini dianggap basi, tidak dipakai lagi
+// Nama posisi untuk baris darurat (Form Permintaan masuk tanpa data Web App).
+// Baris ini bukan lowongan sungguhan, jadi tidak ditawarkan untuk dibuka ulang.
+var POSISI_TANPA_DATA = '(tidak ditemukan data dari Web App)';
 
 // ===== Judul pertanyaan Form Permintaan Tenaga Kerja (Lapis 1) =====
 var JUDUL_UNIT_RS = 'Unit RS';

@@ -167,8 +167,7 @@
       border-radius:12px; padding:12px 14px; font-size:13px; font-weight:500; margin-bottom:16px;
     }
 
-    /* MASTER GATE, Fase 1 (23 Sep 2026): banner "Buka Rekap Pelamar" yang
-       muncul begitu RS memilih Unit RS, lihat #unitRS change listener. */
+    /* Banner "Buka Rekap Pelamar" (muncul begitu Unit RS dipilih). */
     .akses-cepat{
       display:none; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
       background:var(--soft-accent); border:1px solid var(--accent-line); border-radius:13px;
@@ -187,6 +186,28 @@
     .akses-cepat-link[aria-disabled="true"]{
       pointer-events:none; color:var(--muted); border-color:var(--line); background:var(--soft);
     }
+
+    /* Posisi belum terisi dari pengajuan sebelumnya (dibuka ulang oleh RS). */
+    .reopen{
+      display:none; background:var(--soft); border:1px solid var(--line); border-radius:13px;
+      padding:12px 14px; margin:0 0 14px;
+    }
+    .reopen-judul{ font-size:12.5px; font-weight:700; color:var(--ink); margin:0 0 2px; }
+    .reopen-sub{ font-size:11.5px; color:var(--muted); margin:0 0 10px; line-height:1.5; }
+    .reopen-item{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background:var(--card); border:1px solid var(--line); border-radius:11px; padding:9px 10px; margin-top:8px;
+    }
+    .reopen-teks{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .reopen-nama{ font-size:13px; font-weight:700; color:var(--ink); }
+    .reopen-info{ font-size:11.5px; color:var(--muted); }
+    .reopen-btn{
+      flex:none; background:var(--soft-accent); color:var(--accent); border:1px solid var(--accent-line);
+      font-size:12px; font-weight:800; padding:7px 12px; border-radius:9px; cursor:pointer; font-family:inherit;
+    }
+    .reopen-btn:hover:not(:disabled){ border-color:var(--g-light); }
+    .reopen-btn:disabled{ background:var(--soft); color:var(--muted); border-color:var(--line); cursor:default; }
+    .posisi-block[data-reopen]{ border-color:var(--accent-line); background:var(--soft-accent); }
 
     #panel-sukses{ display:none; text-align:center; padding:36px 20px; }
     .ikon-sukses{
@@ -239,6 +260,12 @@
           <div class="akses-cepat" id="akses-cepat">
             <p class="akses-cepat-label">Sudah pernah mengajukan? Lihat rekap pelamar yang sudah masuk.</p>
             <a href="#" target="_blank" rel="noopener" class="akses-cepat-link" id="link-rekap-pelamar" aria-disabled="true">Buka Rekap Pelamar &rarr;</a>
+          </div>
+
+          <div class="reopen" id="reopen-box">
+            <p class="reopen-judul">Posisi yang belum terisi dari pengajuan sebelumnya</p>
+            <p class="reopen-sub">Klik "Buka lagi" untuk memasukkannya ke pengajuan ini. Isian posisi terisi otomatis dengan sisa kebutuhan, dan tetap bisa diubah.</p>
+            <div id="reopen-list"></div>
           </div>
 
           <label for="deadline">Deadline / Batas Waktu Pemenuhan</label>
@@ -403,16 +430,106 @@
 
     function hapusPosisi(idx) {
       var el = document.getElementById('posisi-' + idx);
-      if (el) el.remove();
+      if (!el) return;
+      var kodeReopen = el.getAttribute('data-reopen');
+      el.remove();
+      if (kodeReopen) setTombolReopen(kodeReopen, false);
+      if (!document.querySelector('.posisi-block')) tambahPosisi();
       perbaruiStatusBlok();
     }
 
+    // Blok posisi biasa tidak bisa dihapus kalau tinggal satu; blok yang
+    // dibuka ulang selalu bisa dihapus (diganti blok kosong).
     function perbaruiStatusBlok() {
       var blok = document.querySelectorAll('.posisi-block');
-      document.querySelectorAll('.btn-hapus').forEach(function (btn) {
-        btn.disabled = blok.length <= 1;
+      blok.forEach(function (b, i) {
+        var kode = b.getAttribute('data-reopen');
+        b.querySelector('.btn-hapus').disabled = blok.length <= 1 && !kode;
+        b.querySelector('.posisi-nomor').textContent = i + 1;
+        b.querySelector('.posisi-label').textContent = 'Posisi ke-' + (i + 1) + (kode ? ' (dibuka ulang dari ' + kode + ')' : '');
       });
       document.getElementById('badge-jumlah').textContent = blok.length;
+    }
+
+    // ===== Posisi belum terisi (dibuka ulang dari pengajuan sebelumnya) =====
+    var posisiBelumTerisi = {};
+
+    function escapeTeks(teks) {
+      return String(teks).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function muatPosisiBelumTerisi(unitRS) {
+      var box = document.getElementById('reopen-box');
+      var list = document.getElementById('reopen-list');
+      box.style.display = 'none';
+      list.innerHTML = '';
+      posisiBelumTerisi = {};
+      if (!unitRS) return;
+
+      google.script.run
+        .withSuccessHandler(function (daftar) {
+          if (document.getElementById('unitRS').value !== unitRS || !daftar || !daftar.length) return;
+          daftar.forEach(function (p) { posisiBelumTerisi[p.kode] = p; });
+          list.innerHTML = daftar.map(function (p) {
+            var info = p.kode + ' · ' + (p.kebutuhan ? 'terisi ' + p.diterima + ' dari ' + p.kebutuhan : 'jumlah kebutuhan tidak tercatat');
+            if (p.deadline) info += ' · deadline ' + p.deadline;
+            return '<div class="reopen-item">' +
+                '<div class="reopen-teks"><span class="reopen-nama">' + escapeTeks(p.posisi) + '</span>' +
+                '<span class="reopen-info">' + escapeTeks(info) + '</span></div>' +
+                '<button type="button" class="reopen-btn" data-kode="' + escapeTeks(p.kode) + '" onclick="bukaLagi(this.getAttribute(\'data-kode\'))">Buka lagi</button>' +
+              '</div>';
+          }).join('');
+          box.style.display = 'block';
+        })
+        .withFailureHandler(function () { box.style.display = 'none'; })
+        .ambilPosisiBelumTerisi(unitRS);
+    }
+
+    function setTombolReopen(kode, sudahDipakai) {
+      var btn = document.querySelector('.reopen-btn[data-kode="' + kode + '"]');
+      if (!btn) return;
+      btn.disabled = sudahDipakai;
+      btn.textContent = sudahDipakai ? 'Sudah ditambahkan' : 'Buka lagi';
+    }
+
+    function blokMasihKosong(b) {
+      return !b.hasAttribute('data-reopen') &&
+        ['.in-nama', '.in-jumlah', '.in-kualifikasi', '.in-ipk'].every(function (sel) { return !b.querySelector(sel).value.trim(); }) &&
+        !b.querySelector('.chip-row:not(.chip-row-readonly) .chip');
+    }
+
+    // Isi blok posisi dari data lama. Blok kosong yang sudah ada dipakai lebih
+    // dulu, supaya tidak tertinggal blok kosong di daftar.
+    function bukaLagi(kode) {
+      var p = posisiBelumTerisi[kode];
+      if (!p || document.querySelector('.posisi-block[data-reopen="' + kode + '"]')) return;
+
+      var blok = Array.prototype.filter.call(document.querySelectorAll('.posisi-block'), blokMasihKosong)[0];
+      if (!blok) { tambahPosisi(); blok = document.getElementById('posisi-' + jumlahPosisi); }
+      var idx = Number(blok.id.replace('posisi-', ''));
+
+      blok.setAttribute('data-reopen', kode);
+      blok.querySelector('.in-nama').value = p.posisi;
+      blok.querySelector('.in-jumlah').value = p.sisa || '';
+      blok.querySelector('.in-kualifikasi').value = p.kualifikasi;
+      blok.querySelector('.in-ipk').value = p.ipkMinimal;
+      document.getElementById('chip-prodi-' + idx).innerHTML = '';
+      p.programStudiRelevan.forEach(function (prodi) {
+        var katalog = KATALOG_PRODI.filter(function (x) { return x.prodi === prodi; })[0];
+        tambahChipProdi(idx, prodi, katalog ? katalog.fakultas : (p.fakultasRelevan[0] || ''));
+      });
+      perbaruiFakultasRelevan(idx);
+
+      setTombolReopen(kode, true);
+      perbaruiStatusBlok();
+      blok.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Ganti Unit RS: posisi yang dibuka ulang milik unit sebelumnya dibuang.
+    function hapusSemuaBlokReopen() {
+      document.querySelectorAll('.posisi-block[data-reopen]').forEach(function (b) { b.remove(); });
+      if (!document.querySelector('.posisi-block')) tambahPosisi();
+      perbaruiStatusBlok();
     }
 
     function tampilkanError(pesan) {
@@ -453,7 +570,8 @@
         if (nama) {
           posisiList.push({
             nama: nama, jumlah: jumlah, kualifikasi: kualifikasi, ipkMinimal: ipkMinimal,
-            programStudiRelevan: programStudiRelevan, fakultasRelevan: fakultasRelevan
+            programStudiRelevan: programStudiRelevan, fakultasRelevan: fakultasRelevan,
+            direopenDariKode: blok.getAttribute('data-reopen') || ''
           });
         }
       });
@@ -516,6 +634,8 @@
     // Tombol "Buka Rekap Pelamar" muncul begitu Unit RS dipilih.
     document.getElementById('unitRS').addEventListener('change', function () {
       var unitRS = this.value;
+      hapusSemuaBlokReopen();
+      muatPosisiBelumTerisi(unitRS);
       var wrap = document.getElementById('akses-cepat');
       var link = document.getElementById('link-rekap-pelamar');
 

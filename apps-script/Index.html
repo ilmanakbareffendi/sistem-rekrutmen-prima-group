@@ -269,63 +269,9 @@
   </div>
 
   <script>
-    // Rujukan resmi Fakultas dan Program Studi UNPRI (Katalog T.A. 2026/2027,
-    // 52 program studi). Dipakai untuk saran otomatis Program Studi Relevan
-    // dan penurunan otomatis Fakultas Relevan di tiap blok posisi.
-    var KATALOG_PRODI = [
-      {prodi:'Sarjana Pendidikan Dokter',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Sarjana Pendidikan Dokter Gigi',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Profesi Dokter',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Profesi Dokter Gigi',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Magister Sains Biomedis',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Magister Kedokteran Klinis',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Magister Kedokteran Tropis',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Magister Kesehatan Masyarakat',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Magister Ilmu Kedokteran Gigi',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Doktor Ilmu Kedokteran',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Kedokteran Keluarga Layanan Primer',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Radiologi',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Ilmu Kesehatan Mata',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Jantung dan Pembuluh Darah',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Obstetri dan Ginekologi',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Anestesiologi dan Terapi Intensif',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Penyakit Dalam',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Spesialis Bedah',fakultas:'Fakultas Kedokteran dan Kedokteran Gigi'},
-      {prodi:'Sarjana Farmasi Klinis',fakultas:'Fakultas Ilmu Kesehatan'},
-      {prodi:'Sarjana Kesehatan Masyarakat',fakultas:'Fakultas Ilmu Kesehatan'},
-      {prodi:'Sarjana Fisioterapi',fakultas:'Fakultas Ilmu Kesehatan'},
-      {prodi:'Pendidikan Profesi Apoteker',fakultas:'Fakultas Ilmu Kesehatan'},
-      {prodi:'Sarjana Ilmu Keperawatan',fakultas:'Fakultas Keperawatan dan Kebidanan'},
-      {prodi:'Sarjana Kebidanan',fakultas:'Fakultas Keperawatan dan Kebidanan'},
-      {prodi:'Profesi Ners',fakultas:'Fakultas Keperawatan dan Kebidanan'},
-      {prodi:'Pendidikan Profesi Bidan',fakultas:'Fakultas Keperawatan dan Kebidanan'},
-      {prodi:'Magister Keperawatan',fakultas:'Fakultas Keperawatan dan Kebidanan'},
-      {prodi:'Sarjana Ilmu Hukum',fakultas:'Fakultas Hukum'},
-      {prodi:'Magister Hukum',fakultas:'Fakultas Hukum'},
-      {prodi:'Magister Kenotariatan',fakultas:'Fakultas Hukum'},
-      {prodi:'Doktor Hukum',fakultas:'Fakultas Hukum'},
-      {prodi:'Sarjana Akuntansi',fakultas:'Fakultas Ekonomi dan Bisnis'},
-      {prodi:'Sarjana Manajemen',fakultas:'Fakultas Ekonomi dan Bisnis'},
-      {prodi:'Magister Akuntansi',fakultas:'Fakultas Ekonomi dan Bisnis'},
-      {prodi:'Magister Manajemen',fakultas:'Fakultas Ekonomi dan Bisnis'},
-      {prodi:'Doktor Manajemen',fakultas:'Fakultas Ekonomi dan Bisnis'},
-      {prodi:'Sarjana Pendidikan Bahasa dan Sastra Indonesia',fakultas:'Fakultas Bahasa dan Komunikasi'},
-      {prodi:'Sarjana Pendidikan Bahasa Inggris',fakultas:'Fakultas Bahasa dan Komunikasi'},
-      {prodi:'Sarjana Desain Komunikasi Visual',fakultas:'Fakultas Bahasa dan Komunikasi'},
-      {prodi:'Sarjana Terapan Bahasa Mandarin untuk Komunikasi Bisnis dan Profesional',fakultas:'Fakultas Bahasa dan Komunikasi'},
-      {prodi:'Magister Pendidikan Bahasa Indonesia',fakultas:'Fakultas Bahasa dan Komunikasi'},
-      {prodi:'Sarjana Agroteknologi',fakultas:'Fakultas Pertanian'},
-      {prodi:'Sarjana Agribisnis',fakultas:'Fakultas Pertanian'},
-      {prodi:'Sarjana Psikologi',fakultas:'Fakultas Psikologi'},
-      {prodi:'Pendidikan Profesi Psikolog',fakultas:'Fakultas Psikologi'},
-      {prodi:'Sarjana Teknik Industri',fakultas:'Fakultas Sains dan Teknologi'},
-      {prodi:'Sarjana Sistem Informasi',fakultas:'Fakultas Sains dan Teknologi'},
-      {prodi:'Sarjana Teknik Elektro',fakultas:'Fakultas Sains dan Teknologi'},
-      {prodi:'Sarjana Teknik Informatika',fakultas:'Fakultas Sains dan Teknologi'},
-      {prodi:'Sarjana Arsitektur',fakultas:'Fakultas Sains dan Teknologi'},
-      {prodi:'Sarjana Rekayasa Sipil',fakultas:'Fakultas Sains dan Teknologi'},
-      {prodi:'Magister Ilmu Komputer',fakultas:'Fakultas Sains dan Teknologi'}
-    ];
+    // Katalog Program Studi/Fakultas UNPRI dikirim dari server (KATALOG_PRODI_FAKULTAS
+    // di Config.gs) saat halaman dibuka, jadi hanya ada satu sumber data.
+    var KATALOG_PRODI = <?!= katalogProdi ?>;
 
     var jumlahPosisi = 0;
 
@@ -519,6 +465,16 @@
 
       for (var i = 0; i < posisiList.length; i++) {
         var p = posisiList[i];
+        // Jumlah Kebutuhan wajib, bilangan bulat >= 1 (dipakai auto-flag Ditutup/Perlu Dicek).
+        if (!p.jumlah) {
+          tampilkanError('Posisi ke-' + (i + 1) + ' ("' + p.nama + '"): isi Jumlah Kebutuhan.');
+          return;
+        }
+        var jumlahAngka = parseInt(p.jumlah, 10);
+        if (isNaN(jumlahAngka) || jumlahAngka < 1 || String(jumlahAngka) !== p.jumlah.trim()) {
+          tampilkanError('Posisi ke-' + (i + 1) + ' ("' + p.nama + '"): Jumlah Kebutuhan harus angka bulat, minimal 1.');
+          return;
+        }
         if (!p.programStudiRelevan.length) {
           tampilkanError('Posisi ke-' + (i + 1) + ' ("' + p.nama + '"): pilih minimal satu Program Studi Relevan.');
           return;
@@ -557,10 +513,7 @@
         });
     }
 
-    // MASTER GATE, Fase 1 (23 Sep 2026): begitu RS memilih Unit RS, tampilkan
-    // tombol "Buka Rekap Pelamar" yang mengarah langsung ke Spreadsheet
-    // Pelamar milik Unit RS itu (ambilLinkRekapPelamar di Code.gs), supaya RS
-    // tidak perlu cari sendiri dan CEDC tidak perlu bagikan link manual.
+    // Tombol "Buka Rekap Pelamar" muncul begitu Unit RS dipilih.
     document.getElementById('unitRS').addEventListener('change', function () {
       var unitRS = this.value;
       var wrap = document.getElementById('akses-cepat');
